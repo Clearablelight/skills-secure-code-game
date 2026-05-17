@@ -1,0 +1,11 @@
+[package]
+name = "gitlens-tui"
+version = "0.1.0"
+edition = "2021"
+description = "A fast, keyboard-driven terminal UI for exploring git repository history"
+
+[dependencies]
+ratatui    = "0.29"
+crossterm  = "0.28"
+git2       = "0.19"
+chrono     = { version = "0.4", features = ["clock"] }
