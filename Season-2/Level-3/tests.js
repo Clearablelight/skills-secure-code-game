@@ -66,6 +66,49 @@ describe('POST /ufo', () => {
   });
 });
 
+describe('POST /ufo/upload', () => {
+  it('should return 501 Not Implemented (endpoint removed to prevent RCE)', (done) => {
+    request(app)
+      .post('/ufo/upload')
+      .attach('file', Buffer.from('malicious content'), 'payload.admin')
+      .expect(501, done);
+  });
+});
+
+describe('POST /ufo - security: XXE', () => {
+  it('should reject XML containing an XXE SYSTEM entity', (done) => {
+    const xxePayload =
+      '<?xml version="1.0"?><!DOCTYPE ufo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><ufo><location>&xxe;</location></ufo>';
+
+    request(app)
+      .post('/ufo')
+      .set('Content-Type', 'application/xml')
+      .send(xxePayload)
+      .end((err, res) => {
+        // Must not echo back /etc/passwd contents; 400 or empty content both acceptable
+        if (res.status === 200) {
+          expect(res.text).to.not.include('root:');
+        }
+        done();
+      });
+  });
+
+  it('should reject XML with a .admin SYSTEM entity (command injection backdoor)', (done) => {
+    const adminPayload =
+      '<?xml version="1.0"?><!DOCTYPE ufo [<!ENTITY cmd SYSTEM "file://hack.admin">]><ufo><location>&cmd;</location></ufo>';
+
+    request(app)
+      .post('/ufo')
+      .set('Content-Type', 'application/xml')
+      .send(adminPayload)
+      .end((err, res) => {
+        // Must return 400 and must not execute commands
+        expect(res.status).to.equal(400);
+        done();
+      });
+  });
+});
+
 after(() => {
   app.close();
 });

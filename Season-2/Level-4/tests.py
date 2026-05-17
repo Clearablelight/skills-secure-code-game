@@ -53,11 +53,47 @@ class MyTestCase(TestCase):
         self.assert200(response)
         self.assertEqual(response.data.decode(), '<h2>Please enter a planet name.</h2>')
 
-    def test_index_active_content_planet(self):
-        planet = "<script ...>"
+    # XSS: injected <script> tag must be HTML-escaped, not rendered as executable markup
+    def test_xss_script_tag(self):
+        planet = "<script>alert(1)</script>"
         response = self.client.post('/', data={'planet': planet})
         self.assert200(response)
-        self.assertEqual(response.data.decode(), '<h2>Blocked</h2></p>')
+        # Payload must appear HTML-encoded (& lt; form), not as a raw executable tag
+        self.assertIn(b'&lt;script&gt;', response.data)
+        # The raw unescaped injection must not appear outside the page's own script block
+        self.assertNotIn(b'<script>alert', response.data)
+
+    # XSS bypass: img onerror event handler must be HTML-escaped, not executed
+    def test_xss_img_onerror(self):
+        planet = '<img src="x" onerror="alert(1)">'
+        response = self.client.post('/', data={'planet': planet})
+        self.assert200(response)
+        # Must not contain a raw unescaped <img tag (an attribute-bearing one)
+        self.assertNotIn(b'<img src=', response.data)
+        # onerror must appear only in escaped form (&#34; or &quot; quoting)
+        self.assertNotIn(b'onerror="alert', response.data)
+
+    # XSS bypass: uppercase SCRIPT tag must be HTML-escaped
+    def test_xss_uppercase_script(self):
+        planet = '<SCRIPT>alert(1)</SCRIPT>'
+        response = self.client.post('/', data={'planet': planet})
+        self.assert200(response)
+        self.assertNotIn(b'<SCRIPT>', response.data)
+
+    # XSS bypass: javascript: URI scheme must not appear as a raw href attribute
+    def test_xss_javascript_uri(self):
+        planet = '<a href="javascript:alert(1)">click</a>'
+        response = self.client.post('/', data={'planet': planet})
+        self.assert200(response)
+        self.assertNotIn(b'<a href=', response.data)
+
+    # XSS bypass: pre-encoded HTML entities in input must not become executable markup
+    def test_xss_html_entities(self):
+        planet = '&lt;img src="x" onerror="alert(1)"&gt;'
+        response = self.client.post('/', data={'planet': planet})
+        self.assert200(response)
+        # The input entities must themselves be re-escaped, not decoded to a raw <img tag
+        self.assertNotIn(b'<img', response.data)
 
 if __name__ == '__main__':
     unittest.main()
